@@ -31,6 +31,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -70,6 +71,7 @@ public class MainActivity extends Activity {
     private Palette palette;
     private LinearLayout contentRoot;
     private EditText input;
+    private LinearLayout statusRow;
     private TextView statusText;
     private View statusDot;
     private ProgressBar progress;
@@ -80,11 +82,11 @@ public class MainActivity extends Activity {
     private FrameLayout mediaFrame;
     private ImageView previewImage;
     private VideoView previewVideo;
+    private ImageView playOverlay;
     private TextView previewChip;
-    private TextView previewTitle;
     private TextView previewMeta;
-    private Button shareButton;
-    private Button downloadButton;
+    private ImageButton shareButton;
+    private ImageButton downloadButton;
 
     private String activePostUrl = "";
 
@@ -189,99 +191,55 @@ public class MainActivity extends Activity {
         contentRoot.addView(top, matchWrap());
 
         FrameLayout mark = new FrameLayout(this);
-        mark.setBackground(round(palette.primaryContainer, 18, 0, Color.TRANSPARENT));
-        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(dp(48), dp(48));
-        top.addView(mark, markLp);
+        mark.setBackground(round(palette.primaryContainer, 16, 0, Color.TRANSPARENT));
+        top.addView(mark, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         ImageView markIcon = new ImageView(this);
         markIcon.setImageResource(R.drawable.ic_download);
         markIcon.setImageTintList(ColorStateList.valueOf(palette.onPrimaryContainer));
-        markIcon.setPadding(dp(12), dp(12), dp(12), dp(12));
+        markIcon.setPadding(dp(11), dp(11), dp(11), dp(11));
         mark.addView(markIcon, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        LinearLayout brand = new LinearLayout(this);
-        brand.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(
+        TextView appName = label("IG Save", 22, palette.onSurface, true);
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 1f
         );
-        brandLp.leftMargin = dp(13);
-        top.addView(brand, brandLp);
-
-        TextView appName = label("IG Save", 17, palette.onSurface, true);
-        brand.addView(appName);
-
-        TextView appMeta = label("Private. Local. Fast.", 12, palette.onSurfaceVariant, false);
-        LinearLayout.LayoutParams appMetaLp = matchWrap();
-        appMetaLp.topMargin = dp(2);
-        brand.addView(appMeta, appMetaLp);
-
-        TextView eyebrow = label("MEDIA DOWNLOADER", 11, palette.onSurfaceVariant, true);
-        eyebrow.setLetterSpacing(0.12f);
-        LinearLayout.LayoutParams eyeLp = matchWrap();
-        eyeLp.topMargin = dp(34);
-        contentRoot.addView(eyebrow, eyeLp);
-
-        TextView title = label("Save it cleanly.", 34, palette.onSurface, true);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        LinearLayout.LayoutParams titleLp = matchWrap();
-        titleLp.topMargin = dp(7);
-        contentRoot.addView(title, titleLp);
-
-        TextView sub = label(
-                "Paste or share a public Instagram post or reel. We grab the actual media file — no account required.",
-                15,
-                palette.onSurfaceVariant,
-                false
-        );
-        sub.setLineSpacing(0f, 1.12f);
-        LinearLayout.LayoutParams subLp = matchWrap();
-        subLp.topMargin = dp(8);
-        contentRoot.addView(sub, subLp);
+        nameLp.leftMargin = dp(13);
+        top.addView(appName, nameLp);
     }
 
     private void buildLinkCard() {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
-        card.setBackground(round(palette.surface, 28, 1, palette.outline));
-        LinearLayout.LayoutParams cardLp = matchWrap();
-        cardLp.topMargin = dp(28);
-        contentRoot.addView(card, cardLp);
-
-        TextView label = label("Instagram link", 13, palette.onSurfaceVariant, true);
-        card.addView(label);
-
         LinearLayout field = new LinearLayout(this);
         field.setOrientation(LinearLayout.HORIZONTAL);
         field.setGravity(Gravity.CENTER_VERTICAL);
-        field.setPadding(dp(4), 0, dp(4), 0);
-        field.setBackground(round(palette.surfaceContainer, 20, 0, Color.TRANSPARENT));
+        field.setPadding(dp(6), 0, dp(6), 0);
+        field.setBackground(round(palette.surface, 24, 1, palette.outline));
         LinearLayout.LayoutParams fieldLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(60)
+                dp(64)
         );
-        fieldLp.topMargin = dp(10);
-        card.addView(field, fieldLp);
+        fieldLp.topMargin = dp(26);
+        contentRoot.addView(field, fieldLp);
 
         ImageView linkIcon = new ImageView(this);
         linkIcon.setImageResource(R.drawable.ic_link);
         linkIcon.setImageTintList(ColorStateList.valueOf(palette.onSurfaceVariant));
-        linkIcon.setPadding(dp(12), dp(18), dp(6), dp(18));
-        field.addView(linkIcon, new LinearLayout.LayoutParams(dp(42), dp(60)));
+        linkIcon.setPadding(dp(12), dp(20), dp(7), dp(20));
+        field.addView(linkIcon, new LinearLayout.LayoutParams(dp(44), dp(64)));
 
         input = new EditText(this);
         input.setSingleLine(true);
         input.setTextSize(15);
         input.setTextColor(palette.onSurface);
         input.setHintTextColor(palette.onSurfaceVariant);
-        input.setHint("instagram.com/reel/…");
+        input.setHint("Paste Instagram link");
         input.setBackgroundColor(Color.TRANSPARENT);
-        input.setPadding(0, 0, dp(8), 0);
+        input.setPadding(0, 0, dp(5), 0);
         input.setSelectAllOnFocus(false);
         field.addView(input, new LinearLayout.LayoutParams(
                 0,
@@ -289,118 +247,92 @@ public class MainActivity extends Activity {
                 1f
         ));
 
-        Button paste = compactButton("Paste", R.drawable.ic_paste);
+        ImageButton paste = iconButton(R.drawable.ic_paste, false);
+        paste.setContentDescription("Paste");
         paste.setOnClickListener(v -> pasteClipboard());
-        field.addView(paste, new LinearLayout.LayoutParams(dp(94), dp(48)));
+        LinearLayout.LayoutParams pasteLp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        pasteLp.rightMargin = dp(6);
+        field.addView(paste, pasteLp);
 
-        getButton = filledButton("Get media", R.drawable.ic_link);
+        getButton = filledButton("", R.drawable.ic_download);
+        getButton.setContentDescription("Get media");
         getButton.setOnClickListener(v -> startResolve(input.getText().toString()));
-        LinearLayout.LayoutParams getLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(58)
-        );
-        getLp.topMargin = dp(12);
-        card.addView(getButton, getLp);
+        field.addView(getButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
     }
 
     private void buildStatus() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
+        statusRow = new LinearLayout(this);
+        statusRow.setOrientation(LinearLayout.HORIZONTAL);
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
+        statusRow.setVisibility(View.GONE);
         LinearLayout.LayoutParams rowLp = matchWrap();
-        rowLp.topMargin = dp(17);
-        contentRoot.addView(row, rowLp);
+        rowLp.topMargin = dp(14);
+        contentRoot.addView(statusRow, rowLp);
 
         statusDot = new View(this);
-        statusDot.setBackground(circle(palette.onSurfaceVariant));
-        row.addView(statusDot, new LinearLayout.LayoutParams(dp(8), dp(8)));
+        statusDot.setBackground(circle(palette.primary));
+        statusRow.addView(statusDot, new LinearLayout.LayoutParams(dp(7), dp(7)));
 
-        statusText = label("Ready for a link", 13, palette.onSurfaceVariant, false);
+        statusText = label("", 12, palette.onSurfaceVariant, false);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 1f
         );
-        statusLp.leftMargin = dp(9);
-        row.addView(statusText, statusLp);
+        statusLp.leftMargin = dp(8);
+        statusRow.addView(statusText, statusLp);
 
-        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
         progress.setIndeterminate(true);
         progress.setIndeterminateTintList(ColorStateList.valueOf(palette.primary));
         progress.setVisibility(View.GONE);
-        LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(3)
-        );
-        progressLp.topMargin = dp(12);
-        contentRoot.addView(progress, progressLp);
+        statusRow.addView(progress, new LinearLayout.LayoutParams(dp(20), dp(20)));
     }
 
     private void buildEmptyState() {
         emptyCard = new FrameLayout(this);
-        emptyCard.setBackground(round(palette.surfaceContainer, 28, 0, Color.TRANSPARENT));
         LinearLayout.LayoutParams emptyLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(255)
+                dp(170)
         );
-        emptyLp.topMargin = dp(22);
+        emptyLp.topMargin = dp(26);
         contentRoot.addView(emptyCard, emptyLp);
 
         LinearLayout inner = new LinearLayout(this);
         inner.setOrientation(LinearLayout.VERTICAL);
         inner.setGravity(Gravity.CENTER);
-        inner.setPadding(dp(28), dp(28), dp(28), dp(28));
         emptyCard.addView(inner, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        FrameLayout iconWell = new FrameLayout(this);
-        iconWell.setBackground(round(palette.surfaceContainerHigh, 22, 0, Color.TRANSPARENT));
-        inner.addView(iconWell, new LinearLayout.LayoutParams(dp(72), dp(72)));
-
         ImageView media = new ImageView(this);
         media.setImageResource(R.drawable.ic_media);
         media.setImageTintList(ColorStateList.valueOf(palette.onSurfaceVariant));
         media.setPadding(dp(19), dp(19), dp(19), dp(19));
-        iconWell.addView(media, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        media.setBackground(round(palette.surfaceContainer, 22, 0, Color.TRANSPARENT));
+        inner.addView(media, new LinearLayout.LayoutParams(dp(72), dp(72)));
 
-        TextView title = label("Your preview appears here", 18, palette.onSurface, true);
-        LinearLayout.LayoutParams titleLp = matchWrap();
-        titleLp.topMargin = dp(18);
-        inner.addView(title, titleLp);
-
-        TextView meta = label(
-                "Photos, reels and carousel media are kept on-device until you choose what to do next.",
-                13,
-                palette.onSurfaceVariant,
-                false
-        );
-        meta.setGravity(Gravity.CENTER);
-        meta.setLineSpacing(0f, 1.12f);
-        LinearLayout.LayoutParams metaLp = matchWrap();
-        metaLp.topMargin = dp(7);
-        inner.addView(meta, metaLp);
+        TextView hint = label("Paste a link", 14, palette.onSurfaceVariant, false);
+        LinearLayout.LayoutParams hintLp = matchWrap();
+        hintLp.topMargin = dp(13);
+        inner.addView(hint, hintLp);
     }
 
     private void buildPreview() {
         previewCard = new LinearLayout(this);
         previewCard.setOrientation(LinearLayout.VERTICAL);
-        previewCard.setBackground(round(palette.surface, 28, 1, palette.outline));
         previewCard.setVisibility(View.GONE);
         LinearLayout.LayoutParams cardLp = matchWrap();
         cardLp.topMargin = dp(22);
         contentRoot.addView(previewCard, cardLp);
 
         mediaFrame = new FrameLayout(this);
-        mediaFrame.setBackground(round(Color.BLACK, 27, 0, Color.TRANSPARENT));
+        mediaFrame.setBackground(round(Color.BLACK, 24, 0, Color.TRANSPARENT));
         mediaFrame.setClipToOutline(true);
         previewCard.addView(mediaFrame, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(380)
+                dp(320)
         ));
 
         previewImage = new ImageView(this);
@@ -413,91 +345,71 @@ public class MainActivity extends Activity {
 
         previewVideo = new VideoView(this);
         previewVideo.setVisibility(View.GONE);
-        previewVideo.setOnClickListener(v -> {
-            if (previewVideo.isPlaying()) previewVideo.pause();
-            else previewVideo.start();
-        });
         mediaFrame.addView(previewVideo, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        previewChip = label("READY", 11, Color.WHITE, true);
-        previewChip.setLetterSpacing(0.08f);
+        playOverlay = new ImageView(this);
+        playOverlay.setImageResource(R.drawable.ic_play);
+        playOverlay.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        playOverlay.setPadding(dp(16), dp(16), dp(16), dp(16));
+        playOverlay.setBackground(circle(0xB31A1A1A));
+        playOverlay.setVisibility(View.GONE);
+        FrameLayout.LayoutParams playLp = new FrameLayout.LayoutParams(dp(58), dp(58));
+        playLp.gravity = Gravity.CENTER;
+        mediaFrame.addView(playOverlay, playLp);
+
+        previewChip = label("", 11, Color.WHITE, true);
         previewChip.setGravity(Gravity.CENTER);
-        previewChip.setPadding(dp(13), 0, dp(13), 0);
-        previewChip.setBackground(round(0xD9161816, 16, 0, Color.TRANSPARENT));
+        previewChip.setPadding(dp(11), 0, dp(11), 0);
+        previewChip.setBackground(round(0xB31A1A1A, 14, 0, Color.TRANSPARENT));
+        previewChip.setVisibility(View.GONE);
         FrameLayout.LayoutParams chipLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(34)
+                dp(30)
         );
-        chipLp.gravity = Gravity.TOP | Gravity.START;
-        chipLp.leftMargin = dp(14);
-        chipLp.topMargin = dp(14);
+        chipLp.gravity = Gravity.TOP | Gravity.END;
+        chipLp.rightMargin = dp(12);
+        chipLp.topMargin = dp(12);
         mediaFrame.addView(previewChip, chipLp);
 
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-        details.setPadding(dp(18), dp(18), dp(18), dp(18));
-        previewCard.addView(details, matchWrap());
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams toolbarLp = matchWrap();
+        toolbarLp.topMargin = dp(12);
+        previewCard.addView(toolbar, toolbarLp);
 
-        LinearLayout readyRow = new LinearLayout(this);
-        readyRow.setOrientation(LinearLayout.HORIZONTAL);
-        readyRow.setGravity(Gravity.CENTER_VERTICAL);
-        details.addView(readyRow, matchWrap());
-
-        ImageView check = new ImageView(this);
-        check.setImageResource(R.drawable.ic_check);
-        check.setImageTintList(ColorStateList.valueOf(palette.primary));
-        check.setBackground(circle(palette.primaryContainer));
-        check.setPadding(dp(7), dp(7), dp(7), dp(7));
-        readyRow.addView(check, new LinearLayout.LayoutParams(dp(34), dp(34)));
-
-        previewTitle = label("Ready", 20, palette.onSurface, true);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+        previewMeta = label("", 12, palette.onSurfaceVariant, false);
+        previewMeta.setSingleLine(true);
+        LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 1f
         );
-        titleLp.leftMargin = dp(11);
-        readyRow.addView(previewTitle, titleLp);
+        toolbar.addView(previewMeta, metaLp);
 
-        previewMeta = label("", 13, palette.onSurfaceVariant, false);
-        previewMeta.setLineSpacing(0f, 1.1f);
-        LinearLayout.LayoutParams metaLp = matchWrap();
-        metaLp.topMargin = dp(9);
-        details.addView(previewMeta, metaLp);
-
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams actionsLp = matchWrap();
-        actionsLp.topMargin = dp(17);
-        details.addView(actions, actionsLp);
-
-        shareButton = outlinedButton("Share", R.drawable.ic_share);
+        shareButton = iconButton(R.drawable.ic_share, false);
+        shareButton.setContentDescription("Share");
         shareButton.setOnClickListener(v -> shareReadyFiles());
-        LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, dp(56), 1f);
-        half.rightMargin = dp(7);
-        actions.addView(shareButton, half);
+        LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        shareLp.leftMargin = dp(8);
+        toolbar.addView(shareButton, shareLp);
 
-        downloadButton = filledButton("Download", R.drawable.ic_download);
+        downloadButton = iconButton(R.drawable.ic_download, true);
+        downloadButton.setContentDescription("Save");
         downloadButton.setOnClickListener(v -> saveReadyFiles());
-        LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, dp(56), 1f);
-        half2.leftMargin = dp(7);
-        actions.addView(downloadButton, half2);
+        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        saveLp.leftMargin = dp(8);
+        toolbar.addView(downloadButton, saveLp);
+
+        mediaFrame.setOnClickListener(v -> startVideoPlayback());
+        playOverlay.setOnClickListener(v -> startVideoPlayback());
     }
 
     private void buildFooter() {
-        TextView privacy = label(
-                "Public posts only  •  Files stay on your device unless you share them",
-                11,
-                palette.onSurfaceVariant,
-                false
-        );
-        privacy.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams lp = matchWrap();
-        lp.topMargin = dp(20);
-        contentRoot.addView(privacy, lp);
+        // Intentionally empty: content is the interface.
     }
 
     private void consumeIntent(Intent intent) {
