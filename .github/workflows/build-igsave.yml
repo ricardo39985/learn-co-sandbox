@@ -3,7 +3,7 @@ name: Build IG Save APK
 
 on:
   push:
-    branches: [ build/ig-media-saver-20260919 ]
+    branches: [ build/ig-media-saver-20260919, ui/igsave-material3-production ]
   pull_request:
     branches: [ master ]
   workflow_dispatch:
@@ -35,9 +35,9 @@ jobs:
       - name: Stage APK
         run: |
           mkdir -p dist
-          cp igsave/app/build/outputs/apk/debug/app-debug.apk dist/IGSave-function-test.apk
+          cp igsave/app/build/outputs/apk/debug/app-debug.apk dist/IGSave-ui-preview.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: IGSave-function-test
-          path: dist/IGSave-function-test.apk
+          name: IGSave-ui-preview
+          path: dist/IGSave-ui-preview.apk
           if-no-files-found: error
