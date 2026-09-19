@@ -29,15 +29,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Build unsigned release APK
+      - name: Build functional test APK
         working-directory: igsave
-        run: gradle --no-daemon assembleRelease
+        run: gradle --no-daemon assembleDebug
       - name: Stage APK
         run: |
           mkdir -p dist
-          cp igsave/app/build/outputs/apk/release/app-release-unsigned.apk dist/IGSave-v3-unsigned.apk
+          cp igsave/app/build/outputs/apk/debug/app-debug.apk dist/IGSave-function-test.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: IGSave-v3-unsigned
-          path: dist/IGSave-v3-unsigned.apk
+          name: IGSave-function-test
+          path: dist/IGSave-function-test.apk
           if-no-files-found: error
