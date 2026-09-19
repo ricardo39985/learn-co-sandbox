@@ -552,9 +552,9 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 runOnUiThread(() -> {
                     if (!activePostUrl.equals(url)) return;
-                    status("Direct lookup failed. Trying browser fallback…");
-                    resolver.stopLoading();
-                    resolver.loadUrl(url);
+                    finishingResolve.set(true);
+                    setBusy(false);
+                    status("Couldn’t resolve this public post right now. Retry in a moment — signing in should not be required.");
                 });
             }
         });
