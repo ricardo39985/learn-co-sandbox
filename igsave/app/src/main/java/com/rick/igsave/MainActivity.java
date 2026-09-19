@@ -179,17 +179,9 @@ public class MainActivity extends Activity {
         shareButton.setOnClickListener(v -> shareReadyFiles());
         saveButton.setOnClickListener(v -> saveReadyFiles());
 
-        Button signInButton = smallButton("Instagram sign-in (only if needed)");
-        signInButton.setTextColor(Color.rgb(80,80,80));
-        signInButton.setBackgroundColor(Color.TRANSPARENT);
-        LinearLayout.LayoutParams signLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
-        signLp.topMargin = dp(18);
-        root.addView(signInButton, signLp);
-        signInButton.setOnClickListener(v -> openInstagramSignIn());
-
-        TextView foot = text("Public posts work without signing in. Restricted posts work only if your Instagram account can view them.", 12, false, Color.rgb(125,125,125));
+        TextView foot = text("Public posts should work without signing in. Private or restricted posts are not supported.", 12, false, Color.rgb(125,125,125));
         LinearLayout.LayoutParams footLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        footLp.topMargin = dp(4);
+        footLp.topMargin = dp(18);
         root.addView(foot, footLp);
 
         resolver = new WebView(this);
@@ -266,9 +258,24 @@ public class MainActivity extends Activity {
         setBusy(true);
         shareButton.setEnabled(false); shareButton.setAlpha(.45f);
         saveButton.setEnabled(false); saveButton.setAlpha(.45f);
-        status("Opening Instagram…");
-        resolver.stopLoading();
-        resolver.loadUrl(url);
+        status("Resolving public post…");
+        executor.submit(() -> {
+            List<String> urls = InstagramResolver.resolve(url);
+            if (!activePostUrl.equals(url)) return;
+
+            if (!urls.isEmpty()) {
+                finishingResolve.set(true);
+                runOnUiThread(() -> status("Found " + urls.size() + " media item" + (urls.size() == 1 ? "" : "s") + ". Fetching file…"));
+                downloadAll(urls);
+            } else {
+                runOnUiThread(() -> {
+                    if (!activePostUrl.equals(url)) return;
+                    status("Direct lookup failed. Trying browser fallback…");
+                    resolver.stopLoading();
+                    resolver.loadUrl(url);
+                });
+            }
+        });
     }
 
     private void scheduleInspections() {
@@ -346,7 +353,7 @@ public class MainActivity extends Activity {
 
         if (urls.isEmpty()) {
             setBusy(false);
-            status("No media was exposed. If Instagram is asking you to log in, use the sign-in button once, then retry.");
+            status("Couldn’t resolve media from this post. It may be private, restricted, expired, or temporarily blocked by Instagram.");
             return;
         }
 
@@ -378,7 +385,7 @@ public class MainActivity extends Activity {
             readyFiles.addAll(downloaded);
             setBusy(false);
             if (readyFiles.isEmpty()) {
-                status("Instagram exposed the media, but the CDN download failed. Retry, or sign in and retry.");
+                status("The media link was found, but the file download failed. Retry the post.");
             } else {
                 status("Ready — " + readyFiles.size() + " file" + (readyFiles.size() == 1 ? "" : "s") + ".");
                 shareButton.setEnabled(true); shareButton.setAlpha(1f);
@@ -393,7 +400,7 @@ public class MainActivity extends Activity {
         c.setConnectTimeout(15000);
         c.setReadTimeout(90000);
         c.setInstanceFollowRedirects(true);
-        c.setRequestProperty("User-Agent", resolver.getSettings().getUserAgentString());
+        c.setRequestProperty("User-Agent", InstagramResolver.USER_AGENT);
         c.setRequestProperty("Referer", "https://www.instagram.com/");
         String cookie = CookieManager.getInstance().getCookie(mediaUrl);
         if (cookie != null && !cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
