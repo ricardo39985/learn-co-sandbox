@@ -1,5 +1,5 @@
 name: Build IG Save APK
-# v2 resolver build
+# v3 Material 3 Expressive release build
 
 on:
   push:
@@ -28,16 +28,16 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.11.1'
-      - name: Build debug APK
+          gradle-version: '8.13'
+      - name: Build unsigned release APK
         working-directory: igsave
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon assembleRelease
       - name: Stage APK
         run: |
           mkdir -p dist
-          cp igsave/app/build/outputs/apk/debug/app-debug.apk dist/IGSave.apk
+          cp igsave/app/build/outputs/apk/release/app-release-unsigned.apk dist/IGSave-v3-unsigned.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: IGSave-apk
-          path: dist/IGSave.apk
+          name: IGSave-v3-unsigned
+          path: dist/IGSave-v3-unsigned.apk
           if-no-files-found: error
