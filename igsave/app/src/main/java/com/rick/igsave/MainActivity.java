@@ -693,13 +693,28 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) { }
         }
 
+        if (downloaded.isEmpty()) {
+            runOnUiThread(() -> status("Refreshing media link…"));
+            List<String> refreshed = InstagramResolver.resolve(activePostUrl);
+            if (!refreshed.isEmpty() && !refreshed.equals(urls)) {
+                int retryIndex = 0;
+                for (String mediaUrl : refreshed) {
+                    retryIndex++;
+                    try {
+                        MediaFile mf = downloadOne(mediaUrl, dir, retryIndex);
+                        if (mf != null && mf.file.length() > 0) downloaded.add(mf);
+                    } catch (Exception ignored) { }
+                }
+            }
+        }
+
         runOnUiThread(() -> {
             readyFiles.clear();
             readyFiles.addAll(downloaded);
             setBusy(false);
 
             if (readyFiles.isEmpty()) {
-                status("The media link was found, but the file download failed. Retry the post.");
+                status("Couldn’t fetch the media file. Instagram may be throttling this connection; retrying later should not require signing in.");
                 return;
             }
 
@@ -717,10 +732,9 @@ public class MainActivity extends AppCompatActivity {
         c.setRequestProperty("User-Agent", InstagramResolver.USER_AGENT);
         c.setRequestProperty("Referer", "https://www.instagram.com/");
 
-        String cookie = CookieManager.getInstance().getCookie(mediaUrl);
-        if (cookie != null && !cookie.isEmpty()) {
-            c.setRequestProperty("Cookie", cookie);
-        }
+        c.setRequestProperty("Cache-Control", "no-cache");
+        c.setRequestProperty("Pragma", "no-cache");
+        c.setRequestProperty("Connection", "close");
 
         c.connect();
         int code = c.getResponseCode();
