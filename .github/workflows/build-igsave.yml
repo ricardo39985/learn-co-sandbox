@@ -1,6 +1,8 @@
 name: Build IG Save APK
 
 on:
+  push:
+    branches: [ build/ig-media-saver-20260919 ]
   pull_request:
     branches: [ master ]
   workflow_dispatch:
