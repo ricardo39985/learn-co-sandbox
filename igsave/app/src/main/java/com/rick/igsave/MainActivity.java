@@ -56,7 +56,7 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class MainActivity extends Activity {
+// Polished native Material 3 production UI\npublic class MainActivity extends Activity {
     private static final String AUTHORITY = "com.rick.igsave.files";
     private static final Pattern IG_URL = Pattern.compile(
             "https?://(?:www\\.)?(?:instagram\\.com|instagr\\.am)/[^\\s]+",
