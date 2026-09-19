@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ui/igsave-material3-production
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -35,9 +37,9 @@ jobs:
       - name: Stage APK
         run: |
           mkdir -p dist
-          cp igsave/app/build/outputs/apk/debug/app-debug.apk dist/IGSave-function-test.apk
+          cp igsave/app/build/outputs/apk/debug/app-debug.apk dist/IGSave-ui-preview.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: IGSave-function-test
-          path: dist/IGSave-function-test.apk
+          name: IGSave-ui-preview
+          path: dist/IGSave-ui-preview.apk
           if-no-files-found: error
