@@ -34,7 +34,11 @@ final class InstagramResolver {
             "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
 
     private static final String APP_ID = "936619743392459";
+    private static final String ASBD_ID = "198387";
     private static final String POST_DOC_ID = "27128499623469141";
+    private static final String DESKTOP_SAFARI =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15";
     private static final String SHORTCODE_ALPHABET =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -67,6 +71,15 @@ final class InstagramResolver {
     private static final Pattern OG_IMAGE_REV = Pattern.compile(
             "<meta[^>]+content=[\\\"]([^\\\"]+)[\\\"][^>]+property=[\\\"]og:image[\\\"]",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern OWNER_JSON = Pattern.compile(
+            "[\\\"](?:owner|user)[\\\"]\\s*:\\s*\\{.{0,2200}?[\\\"]username[\\\"]\\s*:\\s*[\\\"]([A-Za-z0-9._]+)[\\\"]",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern OG_TITLE_USERNAME = Pattern.compile(
+            "<meta[^>]+property=[\\\"]og:title[\\\"][^>]+content=[\\\"][^\\\"]*?@([A-Za-z0-9._]+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern PROFILE_HREF = Pattern.compile(
+            "href=[\\\"]/([A-Za-z0-9._]{2,30})/[\\\"]",
+            Pattern.CASE_INSENSITIVE);
 
     private InstagramResolver() {}
 
@@ -92,6 +105,9 @@ final class InstagramResolver {
         if (!media.isEmpty()) return new ArrayList<>(media);
 
         tryGraphQl(code, "https://www.instagram.com/p/" + code + "/", media);
+        if (!media.isEmpty()) return new ArrayList<>(media);
+
+        tryAnonymousFeed(code, media);
         return new ArrayList<>(media);
     }
 
@@ -264,6 +280,268 @@ final class InstagramResolver {
                 }
             } catch (Exception ignored) { }
         }
+    }
+
+    private static void tryAnonymousFeed(String code, LinkedHashSet<String> out) {
+        String username = findOwnerUsername(code);
+        if (username.isEmpty()) return;
+
+        try {
+            Page bootstrap = fetchPage("https://www.instagram.com/", DESKTOP_SAFARI, null);
+            Map<String, String> cookies = new LinkedHashMap<>(bootstrap.cookies);
+
+            String firstUrl = "https://www.instagram.com/api/v1/feed/user/"
+                    + URLEncoder.encode(username, "UTF-8")
+                    + "/username/?count=12";
+
+            Page page = fetchApi(firstUrl, "https://www.instagram.com/" + username + "/", cookies);
+            if (!usableApi(page)) return;
+
+            JSONObject payload = new JSONObject(page.body);
+            if (collectMatchingFeedItem(payload, code, out)) return;
+
+            String userId = "";
+            JSONObject user = payload.optJSONObject("user");
+            if (user != null) {
+                userId = user.optString("pk", "");
+                if (userId.isEmpty()) userId = user.optString("id", "");
+            }
+
+            String nextMaxId = payload.optString("next_max_id", "");
+            boolean more = payload.optBoolean("more_available", false);
+
+            for (int pageIndex = 0;
+                 pageIndex < 8 && more && !nextMaxId.isEmpty() && !userId.isEmpty() && out.isEmpty();
+                 pageIndex++) {
+
+                String url = "https://www.instagram.com/api/v1/feed/user/"
+                        + URLEncoder.encode(userId, "UTF-8")
+                        + "/?count=33&max_id="
+                        + URLEncoder.encode(nextMaxId, "UTF-8");
+
+                Page next = fetchApi(url, "https://www.instagram.com/" + username + "/", cookies);
+                if (!usableApi(next)) return;
+
+                payload = new JSONObject(next.body);
+                if (collectMatchingFeedItem(payload, code, out)) return;
+
+                nextMaxId = payload.optString("next_max_id", "");
+                more = payload.optBoolean("more_available", false);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private static boolean usableApi(Page page) {
+        if (page == null) return false;
+        if (page.status == 401 || page.status == 403 || page.status == 429) return false;
+        return page.status >= 200 && page.status < 300 && page.body != null && !page.body.isEmpty();
+    }
+
+    private static boolean collectMatchingFeedItem(
+            JSONObject payload,
+            String code,
+            LinkedHashSet<String> out
+    ) {
+        JSONArray items = payload.optJSONArray("items");
+        if (items == null) return false;
+
+        String expectedId = shortcodeToMediaId(code);
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.optJSONObject(i);
+            if (item == null) continue;
+
+            String itemCode = item.optString("code", "");
+            String pk = item.optString("pk", "");
+            String id = item.optString("id", "");
+
+            boolean match = code.equals(itemCode)
+                    || (!expectedId.isEmpty() && expectedId.equals(pk))
+                    || (!expectedId.isEmpty() && expectedId.equals(id))
+                    || (!expectedId.isEmpty() && id.startsWith(expectedId + "_"));
+
+            if (!match) continue;
+
+            collectProductMedia(item, out);
+            return !out.isEmpty();
+        }
+        return false;
+    }
+
+    private static String findOwnerUsername(String code) {
+        String expectedId = shortcodeToMediaId(code);
+        String[] urls = new String[]{
+                "https://www.instagram.com/p/" + code + "/",
+                "https://www.instagram.com/reel/" + code + "/",
+                "https://www.instagram.com/p/" + code + "/embed/",
+                "https://www.instagram.com/reel/" + code + "/embed/"
+        };
+        String[] agents = new String[]{DESKTOP_SAFARI, GOOGLEBOT, USER_AGENT};
+
+        for (String url : urls) {
+            for (String agent : agents) {
+                try {
+                    Page page = fetchPage(url, agent, null);
+                    if (page.status < 200 || page.status >= 400) continue;
+
+                    String fromScripts = findOwnerInScripts(page.body, expectedId, code);
+                    if (!fromScripts.isEmpty()) return fromScripts;
+
+                    String fallback = findOwnerInHtml(page.body);
+                    if (!fallback.isEmpty()) return fallback;
+                } catch (Exception ignored) { }
+            }
+        }
+        return "";
+    }
+
+    private static String findOwnerInScripts(String html, String expectedId, String code) {
+        if (html == null || html.isEmpty()) return "";
+
+        Matcher matcher = DATA_SJS.matcher(html);
+        while (matcher.find()) {
+            String payload = matcher.group(1);
+            if (payload == null) continue;
+            payload = payload.trim();
+            if (!payload.startsWith("{")) continue;
+
+            try {
+                String found = findOwnerInJson(new JSONObject(payload), expectedId, code);
+                if (!found.isEmpty()) return found;
+            } catch (Exception ignored) { }
+        }
+        return "";
+    }
+
+    private static String findOwnerInJson(Object value, String expectedId, String code) {
+        if (value instanceof JSONArray) {
+            JSONArray arr = (JSONArray) value;
+            for (int i = 0; i < arr.length(); i++) {
+                String found = findOwnerInJson(arr.opt(i), expectedId, code);
+                if (!found.isEmpty()) return found;
+            }
+            return "";
+        }
+        if (!(value instanceof JSONObject)) return "";
+
+        JSONObject obj = (JSONObject) value;
+        String itemCode = obj.optString("code", "");
+        String pk = obj.optString("pk", "");
+        String id = obj.optString("id", "");
+        boolean isTarget = code.equals(itemCode)
+                || (!expectedId.isEmpty() && expectedId.equals(pk))
+                || (!expectedId.isEmpty() && expectedId.equals(id))
+                || (!expectedId.isEmpty() && id.startsWith(expectedId + "_"));
+
+        if (isTarget) {
+            JSONObject user = obj.optJSONObject("user");
+            if (user == null) user = obj.optJSONObject("owner");
+            if (user != null) {
+                String username = user.optString("username", "");
+                if (validUsername(username)) return username;
+            }
+
+            JSONObject gated = obj.optJSONObject("if_not_gated_logged_out");
+            if (gated != null) {
+                String nested = findOwnerInJson(gated, expectedId, code);
+                if (!nested.isEmpty()) return nested;
+            }
+        }
+
+        JSONArray names = obj.names();
+        if (names == null) return "";
+        for (int i = 0; i < names.length(); i++) {
+            Object child = obj.opt(names.optString(i));
+            if (child instanceof JSONObject || child instanceof JSONArray) {
+                String found = findOwnerInJson(child, expectedId, code);
+                if (!found.isEmpty()) return found;
+            }
+        }
+        return "";
+    }
+
+    private static String findOwnerInHtml(String html) {
+        if (html == null || html.isEmpty()) return "";
+
+        Matcher title = OG_TITLE_USERNAME.matcher(html);
+        if (title.find() && validUsername(title.group(1))) return title.group(1);
+
+        Matcher owner = OWNER_JSON.matcher(html);
+        if (owner.find() && validUsername(owner.group(1))) return owner.group(1);
+
+        Matcher href = PROFILE_HREF.matcher(html);
+        while (href.find()) {
+            String candidate = href.group(1);
+            if (validUsername(candidate)) return candidate;
+        }
+        return "";
+    }
+
+    private static boolean validUsername(String username) {
+        if (username == null || username.isEmpty()) return false;
+        String u = username.toLowerCase(Locale.US);
+        return !(u.equals("p")
+                || u.equals("reel")
+                || u.equals("reels")
+                || u.equals("explore")
+                || u.equals("accounts")
+                || u.equals("direct")
+                || u.equals("stories")
+                || u.equals("about")
+                || u.equals("developer"));
+    }
+
+    private static Page fetchApi(
+            String url,
+            String referer,
+            Map<String, String> cookieJar
+    ) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(12000);
+        c.setReadTimeout(25000);
+        c.setInstanceFollowRedirects(true);
+        c.setUseCaches(false);
+        c.setRequestProperty("User-Agent", DESKTOP_SAFARI);
+        c.setRequestProperty("Accept", "*/*");
+        c.setRequestProperty("Accept-Language", "en-US,en;q=0.8");
+        c.setRequestProperty("X-IG-App-ID", APP_ID);
+        c.setRequestProperty("X-ASBD-ID", ASBD_ID);
+        c.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+        c.setRequestProperty("Referer", referer);
+        c.setRequestProperty("Cache-Control", "no-cache");
+        c.setRequestProperty("Pragma", "no-cache");
+        if (cookieJar != null && !cookieJar.isEmpty()) {
+            c.setRequestProperty("Cookie", cookieHeader(cookieJar));
+        }
+
+        int status = c.getResponseCode();
+        Map<String, String> cookies =
+                cookieJar == null ? new LinkedHashMap<>() : new LinkedHashMap<>(cookieJar);
+
+        List<String> setCookies = c.getHeaderFields().get("Set-Cookie");
+        if (setCookies == null) setCookies = c.getHeaderFields().get("set-cookie");
+        if (setCookies != null) {
+            for (String h : setCookies) {
+                if (h == null) continue;
+                int semi = h.indexOf(';');
+                String pair = semi >= 0 ? h.substring(0, semi) : h;
+                int eq = pair.indexOf('=');
+                if (eq > 0) {
+                    cookies.put(pair.substring(0, eq).trim(), pair.substring(eq + 1).trim());
+                }
+            }
+        }
+
+        InputStream raw =
+                status >= 200 && status < 400 ? c.getInputStream() : c.getErrorStream();
+        String body = raw == null ? "" : readFully(raw, 6 * 1024 * 1024);
+        String finalUrl = c.getURL().toString();
+        c.disconnect();
+
+        if (cookieJar != null) {
+            cookieJar.clear();
+            cookieJar.putAll(cookies);
+        }
+        return new Page(status, finalUrl, body, cookies);
     }
 
     private static void tryGraphQl(String code, String referer, LinkedHashSet<String> out) {
