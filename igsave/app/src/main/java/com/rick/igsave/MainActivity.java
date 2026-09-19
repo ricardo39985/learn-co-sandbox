@@ -138,7 +138,7 @@ public class MainActivity extends AppCompatActivity {
         final int surfaceContainer = color(com.google.android.material.R.attr.colorSurfaceContainer, 0xFFF2F2F2);
         final int surfaceContainerHigh = color(com.google.android.material.R.attr.colorSurfaceContainerHigh, 0xFFEAEAEA);
         final int outlineVariant = color(com.google.android.material.R.attr.colorOutlineVariant, 0xFFD0D0D0);
-        final int primary = color(com.google.android.material.R.attr.colorPrimary, 0xFF6750A4);
+        final int primary = color(androidx.appcompat.R.attr.colorPrimary, 0xFF6750A4);
         final int onPrimary = color(com.google.android.material.R.attr.colorOnPrimary, Color.WHITE);
 
         FrameLayout rootFrame = new FrameLayout(this);
