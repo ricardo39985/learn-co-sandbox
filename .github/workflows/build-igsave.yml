@@ -1,0 +1,45 @@
+name: Build IG Save APK
+# v3 Material 3 Expressive release build
+
+on:
+  push:
+    branches: [ build/ig-media-saver-20260919 ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/igsave-material3-production
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build functional test APK
+        working-directory: igsave
+        run: gradle --no-daemon assembleDebug
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp igsave/app/build/outputs/apk/debug/app-debug.apk dist/IGSave-ui-preview.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IGSave-ui-preview
+          path: dist/IGSave-ui-preview.apk
+          if-no-files-found: error
