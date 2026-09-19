@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
     private TextView statusText;
     private View statusDot;
     private ProgressBar progress;
-    private Button getButton;
+    private ImageButton getButton;
 
     private FrameLayout emptyCard;
     private LinearLayout previewCard;
@@ -254,7 +254,7 @@ public class MainActivity extends Activity {
         pasteLp.rightMargin = dp(6);
         field.addView(paste, pasteLp);
 
-        getButton = filledButton("", R.drawable.ic_download);
+        getButton = iconButton(R.drawable.ic_download, true);
         getButton.setContentDescription("Get media");
         getButton.setOnClickListener(v -> startResolve(input.getText().toString()));
         field.addView(getButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
@@ -600,58 +600,157 @@ public class MainActivity extends Activity {
         boolean video = first.mime != null
                 && first.mime.toLowerCase(Locale.US).startsWith("video/");
 
-        if (video) {
-            previewImage.setVisibility(View.GONE);
-            previewVideo.setVisibility(View.VISIBLE);
-            previewVideo.setVideoURI(Uri.fromFile(first.file));
-            previewVideo.setOnPreparedListener(player -> {
-                player.setLooping(true);
-                player.setVolume(0f, 0f);
-                previewVideo.start();
-            });
-        } else {
-            previewVideo.setVisibility(View.GONE);
-            Bitmap bitmap = decodePreview(first.file);
-            previewImage.setImageBitmap(bitmap);
-            previewImage.setVisibility(View.VISIBLE);
-        }
+        Bitmap poster = video ? videoPoster(first.file) : decodePreview(first.file);
+        previewImage.setImageBitmap(poster);
+        previewImage.setVisibility(View.VISIBLE);
+        previewVideo.setVisibility(View.GONE);
+        playOverlay.setVisibility(video ? View.VISIBLE : View.GONE);
 
         if (readyFiles.size() > 1) {
-            previewChip.setText("CAROUSEL  •  " + readyFiles.size());
-            previewTitle.setText(readyFiles.size() + " files ready");
+            previewChip.setText("1 / " + readyFiles.size());
+            previewChip.setVisibility(View.VISIBLE);
         } else {
-            previewChip.setText(video ? "VIDEO" : "PHOTO");
-            previewTitle.setText(video ? "Video ready" : "Photo ready");
+            previewChip.setVisibility(View.GONE);
         }
 
         long total = 0;
         for (MediaFile file : readyFiles) total += file.file.length();
 
-        String details = mediaDetails(first);
-        if (readyFiles.size() == 1) {
-            previewMeta.setText(details + "  •  " + formatBytes(total) + "\n" + first.file.getName());
+        String summary = compactMediaSummary(first);
+        if (readyFiles.size() > 1) {
+            summary = readyFiles.size() + " items  •  " + formatBytes(total);
         } else {
-            previewMeta.setText(
-                    "Previewing 1 of " + readyFiles.size()
-                            + "  •  " + formatBytes(total) + " total\n"
-                            + details
-            );
+            summary = summary + "  •  " + formatBytes(total);
         }
+        previewMeta.setText(summary);
 
         TransitionManager.beginDelayedTransition(
                 contentRoot,
-                new AutoTransition().setDuration(260)
+                new AutoTransition().setDuration(220)
         );
         emptyCard.setVisibility(View.GONE);
         previewCard.setVisibility(View.VISIBLE);
+        hideStatus();
 
         previewCard.setAlpha(0f);
-        previewCard.setTranslationY(dp(14));
+        previewCard.setTranslationY(dp(10));
         previewCard.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(280)
+                .setDuration(240)
                 .start();
+
+        int[] size = mediaSize(first);
+        mediaFrame.post(() -> {
+            int width = mediaFrame.getWidth();
+            if (width <= 0) return;
+
+            float ratio = 0.82f;
+            if (size[0] > 0 && size[1] > 0) {
+                ratio = (float) size[1] / (float) size[0];
+            }
+            ratio = Math.max(0.62f, Math.min(1.25f, ratio));
+
+            ViewGroup.LayoutParams lp = mediaFrame.getLayoutParams();
+            lp.height = Math.round(width * ratio);
+            mediaFrame.setLayoutParams(lp);
+        });
+    }
+
+    private void startVideoPlayback() {
+        if (readyFiles.isEmpty()) return;
+        MediaFile first = readyFiles.get(0);
+        if (first.mime == null || !first.mime.toLowerCase(Locale.US).startsWith("video/")) {
+            return;
+        }
+
+        if (previewVideo.getVisibility() == View.VISIBLE) {
+            if (previewVideo.isPlaying()) {
+                previewVideo.pause();
+                playOverlay.setVisibility(View.VISIBLE);
+            } else {
+                previewVideo.start();
+                playOverlay.setVisibility(View.GONE);
+            }
+            return;
+        }
+
+        previewImage.setVisibility(View.GONE);
+        previewVideo.setVisibility(View.VISIBLE);
+        playOverlay.setVisibility(View.GONE);
+        previewVideo.setVideoURI(Uri.fromFile(first.file));
+        previewVideo.setOnPreparedListener(player -> {
+            player.setLooping(false);
+            player.setVolume(1f, 1f);
+            previewVideo.start();
+        });
+        previewVideo.setOnCompletionListener(player -> {
+            previewVideo.setVisibility(View.GONE);
+            previewImage.setVisibility(View.VISIBLE);
+            playOverlay.setVisibility(View.VISIBLE);
+        });
+    }
+
+    private Bitmap videoPoster(File file) {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(file.getAbsolutePath());
+            Bitmap frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            if (frame != null) return frame;
+        } catch (Exception ignored) {
+        } finally {
+            try {
+                retriever.release();
+            } catch (Exception ignored) { }
+        }
+        return null;
+    }
+
+    private int[] mediaSize(MediaFile media) {
+        int width = 0;
+        int height = 0;
+
+        try {
+            if (media.mime != null && media.mime.startsWith("video/")) {
+                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                retriever.setDataSource(media.file.getAbsolutePath());
+
+                String w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+                String h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+                String rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+
+                if (w != null) width = Integer.parseInt(w);
+                if (h != null) height = Integer.parseInt(h);
+                if ("90".equals(rotation) || "270".equals(rotation)) {
+                    int tmp = width;
+                    width = height;
+                    height = tmp;
+                }
+                retriever.release();
+            } else {
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(media.file.getAbsolutePath(), options);
+                width = options.outWidth;
+                height = options.outHeight;
+            }
+        } catch (Exception ignored) { }
+
+        return new int[]{width, height};
+    }
+
+    private String compactMediaSummary(MediaFile media) {
+        try {
+            if (media.mime != null && media.mime.startsWith("video/")) {
+                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                retriever.setDataSource(media.file.getAbsolutePath());
+                String duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+                retriever.release();
+                return duration == null ? "Video" : formatDuration(Long.parseLong(duration));
+            }
+        } catch (Exception ignored) { }
+
+        return media.mime != null && media.mime.startsWith("video/") ? "Video" : "Photo";
     }
 
     private String mediaDetails(MediaFile media) {
@@ -704,7 +803,7 @@ public class MainActivity extends Activity {
         if (previewCard.getVisibility() == View.VISIBLE) {
             TransitionManager.beginDelayedTransition(
                     contentRoot,
-                    new AutoTransition().setDuration(220)
+                    new AutoTransition().setDuration(180)
             );
         }
         previewCard.setVisibility(View.GONE);
@@ -716,9 +815,13 @@ public class MainActivity extends Activity {
             try {
                 previewVideo.stopPlayback();
             } catch (Exception ignored) { }
+            previewVideo.setVisibility(View.GONE);
         }
         if (previewImage != null) {
             previewImage.setImageDrawable(null);
+        }
+        if (playOverlay != null) {
+            playOverlay.setVisibility(View.GONE);
         }
     }
 
@@ -875,21 +978,27 @@ public class MainActivity extends Activity {
 
     private void setBusy(boolean busy) {
         runOnUiThread(() -> {
-            progress.setVisibility(busy ? View.VISIBLE : View.GONE);
             getButton.setEnabled(!busy);
-            getButton.setAlpha(busy ? .72f : 1f);
-            getButton.setText(busy ? "Working…" : "Get media");
+            getButton.setAlpha(busy ? .45f : 1f);
+            progress.setVisibility(busy ? View.VISIBLE : View.GONE);
+            if (busy) statusRow.setVisibility(View.VISIBLE);
         });
     }
 
     private void setStatus(String text, int color) {
         runOnUiThread(() -> {
+            statusRow.setVisibility(View.VISIBLE);
             statusText.setText(text);
             statusText.setTextColor(
                     color == palette.primary ? palette.onSurfaceVariant : color
             );
             statusDot.setBackground(circle(color));
         });
+    }
+
+    private void hideStatus() {
+        statusRow.setVisibility(View.GONE);
+        progress.setVisibility(View.GONE);
     }
 
     private TextView label(String text, int sp, int color, boolean bold) {
@@ -899,6 +1008,24 @@ public class MainActivity extends Activity {
         view.setTextColor(color);
         view.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
         return view;
+    }
+
+    private ImageButton iconButton(int iconRes, boolean primary) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(iconRes);
+        button.setScaleType(ImageView.ScaleType.CENTER);
+        button.setPadding(dp(13), dp(13), dp(13), dp(13));
+        button.setImageTintList(ColorStateList.valueOf(
+                primary ? palette.onPrimary : palette.onSurface
+        ));
+        button.setBackground(ripple(
+                primary ? palette.primary : palette.surfaceContainer,
+                primary ? palette.rippleOnPrimary : palette.ripple,
+                18,
+                primary ? 0 : 1,
+                primary ? Color.TRANSPARENT : palette.outline
+        ));
+        return button;
     }
 
     private Button filledButton(String text, int iconRes) {
