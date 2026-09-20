@@ -454,6 +454,9 @@ public class MainActivity extends Activity {
         activePostUrl = url;
         input.setText(url);
         input.setSelection(input.length());
+
+        // A new request replaces the previous temporary share file.
+        clearPrivateShareCache();
         readyFiles.clear();
         stopPreview();
         previewCard.setVisibility(View.GONE);
@@ -478,57 +481,64 @@ public class MainActivity extends Activity {
     }
 
     private void downloadAll(List<String> urls) {
-        File dir = new File(getCacheDir(), "share");
-        if (!dir.exists()) dir.mkdirs();
+        File dir = privateShareDir();
+        ensureNoMediaMarker(dir);
 
-        File[] old = dir.listFiles();
-        if (old != null) {
-            for (File file : old) file.delete();
-        }
+        MediaFile downloaded = null;
+        int candidate = 0;
 
-        List<MediaFile> downloaded = new ArrayList<>();
-        int index = 0;
-
+        // Strict single-file cache: keep the first valid media candidate only.
         for (String mediaUrl : urls) {
-            index++;
-            final int current = index;
+            candidate++;
+            final int current = candidate;
+
             runOnUiThread(() -> setStatus(
-                    urls.size() > 1 ? "Fetching " + current + " of " + urls.size() + "…" : "Fetching media…",
+                    urls.size() > 1 ? "Fetching media…" : "Fetching media…",
                     CYAN
             ));
 
             try {
                 MediaFile file = downloadOne(mediaUrl, dir, current);
-                if (file != null && file.file.length() > 0) downloaded.add(file);
+                if (file != null && file.file.length() > 0) {
+                    downloaded = file;
+                    break;
+                }
             } catch (Exception ignored) { }
         }
 
-        if (downloaded.isEmpty()) {
+        if (downloaded == null) {
             runOnUiThread(() -> setStatus("Refreshing link…", CYAN));
             List<String> refreshed = InstagramResolver.resolve(activePostUrl);
 
-            if (!refreshed.isEmpty() && !refreshed.equals(urls)) {
+            if (!refreshed.isEmpty()) {
                 int retry = 0;
                 for (String mediaUrl : refreshed) {
                     retry++;
                     try {
                         MediaFile file = downloadOne(mediaUrl, dir, retry);
-                        if (file != null && file.file.length() > 0) downloaded.add(file);
+                        if (file != null && file.file.length() > 0) {
+                            downloaded = file;
+                            break;
+                        }
                     } catch (Exception ignored) { }
                 }
             }
         }
 
+        final MediaFile latest = downloaded;
         runOnUiThread(() -> {
             readyFiles.clear();
-            readyFiles.addAll(downloaded);
             setBusy(false);
 
-            if (readyFiles.isEmpty()) {
+            if (latest == null) {
+                clearPrivateShareCache();
                 setStatus("Couldn’t fetch the media file.", ERROR);
                 return;
             }
 
+            // Remove any partial/alternate candidates. Only the latest successful file survives.
+            keepOnly(latest.file);
+            readyFiles.add(latest);
             hideStatus();
             showPreview();
         });
@@ -729,29 +739,19 @@ public class MainActivity extends Activity {
     private void shareReadyFiles() {
         if (readyFiles.isEmpty()) return;
 
-        ArrayList<Uri> uris = new ArrayList<>();
-        String commonType = readyFiles.get(0).mime;
-        boolean mixed = false;
+        MediaFile media = readyFiles.get(0);
+        Uri uri = Uri.parse(
+                "content://" + AUTHORITY + "/share/" + Uri.encode(media.file.getName())
+        );
 
-        for (MediaFile file : readyFiles) {
-            if (!commonType.equals(file.mime)) mixed = true;
-            uris.add(Uri.parse(
-                    "content://" + AUTHORITY + "/share/" + Uri.encode(file.file.getName())
-            ));
-        }
-
-        Intent send;
-        if (uris.size() == 1) {
-            send = new Intent(Intent.ACTION_SEND);
-            send.putExtra(Intent.EXTRA_STREAM, uris.get(0));
-        } else {
-            send = new Intent(Intent.ACTION_SEND_MULTIPLE);
-            send.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
-        }
-
-        send.setType(mixed ? "*/*" : commonType);
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType(media.mime == null ? "application/octet-stream" : media.mime);
+        send.putExtra(Intent.EXTRA_STREAM, uri);
+        send.setClipData(ClipData.newRawUri(media.file.getName(), uri));
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivity(Intent.createChooser(send, "Share media"));
+
+        // Share only the private cache URI. No MediaStore insert happens on this path.
+        startActivity(Intent.createChooser(send, "Share"));
     }
 
     private void saveReadyFiles() {
@@ -807,6 +807,48 @@ public class MainActivity extends Activity {
                 }
             });
         });
+    }
+
+    private File privateShareDir() {
+        File dir = new File(getCacheDir(), "share");
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
+    private void clearPrivateShareCache() {
+        File dir = privateShareDir();
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (".nomedia".equals(file.getName())) continue;
+            try {
+                file.delete();
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private void keepOnly(File keep) {
+        File dir = privateShareDir();
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (".nomedia".equals(file.getName())) continue;
+            if (file.equals(keep)) continue;
+            try {
+                file.delete();
+            } catch (Exception ignored) { }
+        }
+        ensureNoMediaMarker(dir);
+    }
+
+    private void ensureNoMediaMarker(File dir) {
+        File marker = new File(dir, ".nomedia");
+        if (marker.exists()) return;
+        try {
+            marker.createNewFile();
+        } catch (Exception ignored) { }
     }
 
     private String extractUrl(String raw) {
