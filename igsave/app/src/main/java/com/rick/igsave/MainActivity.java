@@ -412,6 +412,7 @@ public class MainActivity extends Activity {
         activePostUrl = "";
         input.setText("");
         readyFiles.clear();
+        clearPrivateShareCache();
         stopPreview();
         previewCard.setVisibility(View.GONE);
         hideStatus();
