@@ -10,8 +10,8 @@ android {
         applicationId 'com.rick.igsave'
         minSdk 29
         targetSdk 36
-        versionCode 7
-        versionName '3.4'
+        versionCode 8
+        versionName '3.5'
     }
 
     buildTypes {
@@ -25,4 +25,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+
+dependencies {
+    implementation 'androidx.core:core:1.17.0'
 }
