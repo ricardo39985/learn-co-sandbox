@@ -59,6 +59,9 @@ import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
     private static final String AUTHORITY = "com.rick.igsave.files";
+    private static final String TIKTOK_US = "com.zhiliaoapp.musically";
+    private static final String TIKTOK_INTL = "com.ss.android.ugc.trill";
+    private static final String IFUNNY = "mobi.ifunny";
     private static final Pattern IG_URL = Pattern.compile(
             "https?://(?:www\\.)?(?:instagram\\.com|instagr\\.am)/[^\\s]+",
             Pattern.CASE_INSENSITIVE
@@ -372,7 +375,7 @@ public class MainActivity extends Activity {
         previewCard.addView(actionRow, actionRowLp);
 
         shareButton = actionButton("Share", R.drawable.ic_share, false);
-        shareButton.setOnClickListener(v -> shareReadyFiles());
+        shareButton.setOnClickListener(this::showShareTargets);
         LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(0, dp(58), 1f);
         shareLp.rightMargin = dp(8);
         actionRow.addView(shareButton, shareLp);
@@ -737,22 +740,108 @@ public class MainActivity extends Activity {
         if (playOverlay != null) playOverlay.setVisibility(View.GONE);
     }
 
-    private void shareReadyFiles() {
+    private void showShareTargets(View anchor) {
+        if (readyFiles.isEmpty()) return;
+
+        PopupMenu menu = new PopupMenu(this, anchor);
+        int nextId = 1;
+
+        String tiktok = firstInstalledPackage(TIKTOK_US, TIKTOK_INTL);
+        if (tiktok != null) {
+            menu.getMenu().add(0, nextId++, 0, "TikTok");
+        }
+
+        boolean hasIFunny = isPackageInstalled(IFUNNY);
+        if (hasIFunny) {
+            menu.getMenu().add(0, nextId++, 1, "iFunny");
+        }
+
+        menu.getMenu().add(0, 100, 99, "Other…");
+
+        final String tiktokPackage = tiktok;
+        final boolean ifunnyInstalled = hasIFunny;
+
+        menu.setOnMenuItemClickListener(item -> {
+            CharSequence title = item.getTitle();
+            if ("TikTok".contentEquals(title) && tiktokPackage != null) {
+                shareToPackage(tiktokPackage);
+                return true;
+            }
+            if ("iFunny".contentEquals(title) && ifunnyInstalled) {
+                shareToPackage(IFUNNY);
+                return true;
+            }
+            shareViaChooser();
+            return true;
+        });
+        menu.show();
+    }
+
+    private void shareToPackage(String packageName) {
         if (readyFiles.isEmpty()) return;
 
         MediaFile media = readyFiles.get(0);
-        Uri uri = Uri.parse(
-                "content://" + AUTHORITY + "/share/" + Uri.encode(media.file.getName())
-        );
+        Uri uri = privateShareUri(media);
 
+        Intent send = baseShareIntent(media, uri);
+        send.setPackage(packageName);
+
+        try {
+            grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(send);
+        } catch (Exception e) {
+            shareViaChooser();
+        }
+    }
+
+    private void shareViaChooser() {
+        if (readyFiles.isEmpty()) return;
+
+        MediaFile media = readyFiles.get(0);
+        Uri uri = privateShareUri(media);
+        Intent send = baseShareIntent(media, uri);
+
+        startActivity(Intent.createChooser(send, "Share"));
+    }
+
+    private Intent baseShareIntent(MediaFile media, Uri uri) {
         Intent send = new Intent(Intent.ACTION_SEND);
-        send.setType(media.mime == null ? "application/octet-stream" : media.mime);
+        String mime = media.mime == null ? "application/octet-stream" : media.mime;
+
+        if (mime.startsWith("video/")) {
+            send.setType("video/*");
+        } else if (mime.startsWith("image/")) {
+            send.setType("image/*");
+        } else {
+            send.setType(mime);
+        }
+
         send.putExtra(Intent.EXTRA_STREAM, uri);
         send.setClipData(ClipData.newRawUri(media.file.getName(), uri));
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return send;
+    }
 
-        // Share only the private cache URI. No MediaStore insert happens on this path.
-        startActivity(Intent.createChooser(send, "Share"));
+    private Uri privateShareUri(MediaFile media) {
+        return Uri.parse(
+                "content://" + AUTHORITY + "/share/" + Uri.encode(media.file.getName())
+        );
+    }
+
+    private String firstInstalledPackage(String... packages) {
+        for (String packageName : packages) {
+            if (isPackageInstalled(packageName)) return packageName;
+        }
+        return null;
+    }
+
+    private boolean isPackageInstalled(String packageName) {
+        try {
+            getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void saveReadyFiles() {
