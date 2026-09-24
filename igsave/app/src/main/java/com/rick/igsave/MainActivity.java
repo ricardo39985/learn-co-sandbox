@@ -38,6 +38,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.VideoView;
 
+import androidx.core.content.FileProvider;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -58,7 +60,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
-    private static final String AUTHORITY = "com.rick.igsave.files";
+    private static final String FILE_PROVIDER_AUTHORITY = "com.rick.igsave.fileprovider";
     private static final String TIKTOK_US = "com.zhiliaoapp.musically";
     private static final String TIKTOK_INTL = "com.ss.android.ugc.trill";
     private static final String IFUNNY = "mobi.ifunny";
@@ -823,8 +825,10 @@ public class MainActivity extends Activity {
     }
 
     private Uri privateShareUri(MediaFile media) {
-        return Uri.parse(
-                "content://" + AUTHORITY + "/share/" + Uri.encode(media.file.getName())
+        return FileProvider.getUriForFile(
+                this,
+                FILE_PROVIDER_AUTHORITY,
+                media.file
         );
     }
 
