@@ -64,8 +64,8 @@ public class MainActivity extends Activity {
     private static final String TIKTOK_US = "com.zhiliaoapp.musically";
     private static final String TIKTOK_INTL = "com.ss.android.ugc.trill";
     private static final String IFUNNY = "mobi.ifunny";
-    private static final Pattern IG_URL = Pattern.compile(
-            "https?://(?:www\\.)?(?:instagram\\.com|instagr\\.am)/[^\\s]+",
+    private static final Pattern SOCIAL_URL = Pattern.compile(
+            "https?://(?:www\\.)?(?:(?:instagram\\.com|instagr\\.am)|(?:x\\.com|twitter\\.com))/[^\\s]+",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -219,7 +219,7 @@ public class MainActivity extends Activity {
         TextView title = label("IG Save", 23, TEXT, true);
         titles.addView(title);
 
-        TextView subtitle = label("Save Instagram videos and photos", 14, TEXT_MUTED, false);
+        TextView subtitle = label("Save Instagram & X videos and photos", 14, TEXT_MUTED, false);
         LinearLayout.LayoutParams subLp = matchWrap();
         subLp.topMargin = dp(2);
         titles.addView(subtitle, subLp);
@@ -254,7 +254,7 @@ public class MainActivity extends Activity {
         input.setTextSize(15);
         input.setTextColor(TEXT);
         input.setHintTextColor(TEXT_MUTED);
-        input.setHint("Paste Instagram link");
+        input.setHint("Paste Instagram or X link");
         input.setBackgroundColor(Color.TRANSPARENT);
         input.setPadding(0, 0, dp(6), 0);
         input.setSelectAllOnFocus(false);
@@ -471,7 +471,7 @@ public class MainActivity extends Activity {
         setStatus("Fetching media…", CYAN);
 
         executor.submit(() -> {
-            List<String> urls = InstagramResolver.resolve(url);
+            List<String> urls = resolveMedia(url);
             if (!url.equals(activePostUrl)) return;
 
             if (urls.isEmpty()) {
@@ -514,7 +514,7 @@ public class MainActivity extends Activity {
 
         if (downloaded == null) {
             runOnUiThread(() -> setStatus("Refreshing link…", CYAN));
-            List<String> refreshed = InstagramResolver.resolve(activePostUrl);
+            List<String> refreshed = resolveMedia(activePostUrl);
 
             if (!refreshed.isEmpty()) {
                 int retry = 0;
@@ -548,6 +548,24 @@ public class MainActivity extends Activity {
             hideStatus();
             showPreview();
         });
+    }
+
+    private List<String> resolveMedia(String url) {
+        try {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost();
+            if (host != null) {
+                host = host.toLowerCase(Locale.US);
+                if (host.equals("x.com")
+                        || host.endsWith(".x.com")
+                        || host.equals("twitter.com")
+                        || host.endsWith(".twitter.com")) {
+                    return XTwitterResolver.resolve(url);
+                }
+            }
+        } catch (Exception ignored) { }
+
+        return InstagramResolver.resolve(url);
     }
 
     private MediaFile downloadOne(String mediaUrl, File dir, int index) throws Exception {
@@ -613,6 +631,9 @@ public class MainActivity extends Activity {
                 && first.mime.toLowerCase(Locale.US).startsWith("video/");
 
         Bitmap poster = video ? videoPoster(first.file) : decodePreview(first.file);
+        previewImage.setScaleType(video
+                ? ImageView.ScaleType.CENTER_CROP
+                : ImageView.ScaleType.FIT_CENTER);
         previewImage.setImageBitmap(poster);
         previewImage.setVisibility(View.VISIBLE);
         previewVideo.setVisibility(View.GONE);
@@ -648,8 +669,18 @@ public class MainActivity extends Activity {
         mediaFrame.post(() -> {
             int width = mediaFrame.getWidth();
             if (width <= 0) return;
+
+            float heightRatio = 1.06f;
+            if (!video) {
+                int[] dimensions = imageDimensions(first.file);
+                if (dimensions[0] > 0 && dimensions[1] > 0) {
+                    heightRatio = (float) dimensions[1] / (float) dimensions[0];
+                    heightRatio = Math.max(0.55f, Math.min(1.45f, heightRatio));
+                }
+            }
+
             ViewGroup.LayoutParams lp = mediaFrame.getLayoutParams();
-            lp.height = Math.round(width * 1.06f);
+            lp.height = Math.round(width * heightRatio);
             mediaFrame.setLayoutParams(lp);
         });
     }
@@ -714,6 +745,13 @@ public class MainActivity extends Activity {
                 retriever.release();
             } catch (Exception ignored) { }
         }
+    }
+
+    private int[] imageDimensions(File file) {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+        return new int[]{options.outWidth, options.outHeight};
     }
 
     private Bitmap decodePreview(File file) {
@@ -949,7 +987,7 @@ public class MainActivity extends Activity {
         if (raw == null) return null;
 
         String value = raw.trim();
-        Matcher matcher = IG_URL.matcher(value);
+        Matcher matcher = SOCIAL_URL.matcher(value);
         String candidate = matcher.find() ? matcher.group() : value;
 
         candidate = candidate.replaceAll("[)>.,]+$", "");
@@ -966,7 +1004,11 @@ public class MainActivity extends Activity {
             if (!(host.equals("instagram.com")
                     || host.endsWith(".instagram.com")
                     || host.equals("instagr.am")
-                    || host.endsWith(".instagr.am"))) {
+                    || host.endsWith(".instagr.am")
+                    || host.equals("x.com")
+                    || host.endsWith(".x.com")
+                    || host.equals("twitter.com")
+                    || host.endsWith(".twitter.com"))) {
                 return null;
             }
             return candidate;
