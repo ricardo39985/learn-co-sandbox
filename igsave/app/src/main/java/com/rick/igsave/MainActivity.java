@@ -574,8 +574,21 @@ public class MainActivity extends Activity {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(90000);
         connection.setInstanceFollowRedirects(true);
-        connection.setRequestProperty("User-Agent", InstagramResolver.USER_AGENT);
-        connection.setRequestProperty("Referer", "https://www.instagram.com/");
+        String host = url.getHost() == null ? "" : url.getHost().toLowerCase(Locale.US);
+        boolean xMedia = host.contains("twimg.com")
+                || host.contains("twitter.com")
+                || host.equals("x.com")
+                || host.endsWith(".x.com")
+                || host.contains("fxtwitter.com");
+
+        connection.setRequestProperty(
+                "User-Agent",
+                xMedia ? XTwitterResolver.USER_AGENT : InstagramResolver.USER_AGENT
+        );
+        connection.setRequestProperty(
+                "Referer",
+                xMedia ? "https://x.com/" : "https://www.instagram.com/"
+        );
         connection.setRequestProperty("Cache-Control", "no-cache");
         connection.setRequestProperty("Pragma", "no-cache");
         connection.setRequestProperty("Connection", "close");
