@@ -258,9 +258,9 @@ final class XTwitterResolver {
         JSONObject json = new JSONObject(body);
 
         // FxTwitter mirrors status in the body. Fail fast on tombstones/errors.
-        int code = json.optInt("code", 200);
-        if (code < 200 || code >= 300) {
-            throw new IllegalStateException("API " + code);
+        int apiCode = json.optInt("code", 200);
+        if (apiCode < 200 || apiCode >= 300) {
+            throw new IllegalStateException("API " + apiCode);
         }
 
         return json;
