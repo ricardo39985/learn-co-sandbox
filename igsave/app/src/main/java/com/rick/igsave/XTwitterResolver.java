@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Locale;
 
 final class XTwitterResolver {
-    private static final String USER_AGENT =
+    static final String USER_AGENT =
             "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36";
 
@@ -36,24 +36,41 @@ final class XTwitterResolver {
                 }
             }
 
-            if (statusIndex < 1 || statusIndex + 1 >= parts.size()) return out;
+            if (statusIndex < 0 || statusIndex + 1 >= parts.size()) return out;
 
-            String username = parts.get(statusIndex - 1);
             String id = parts.get(statusIndex + 1).replaceAll("[^0-9]", "");
-            if (username.isEmpty() || id.isEmpty()) return out;
+            if (id.isEmpty()) return out;
 
-            String apiUrl = "https://api.fxtwitter.com/"
-                    + username
-                    + "/status/"
-                    + id;
+            JSONObject root = null;
 
-            JSONObject root = fetchJson(apiUrl);
+            // Current maintained API.
+            try {
+                root = fetchJson("https://api.fxtwitter.com/2/status/" + id);
+            } catch (Exception ignored) { }
+
+            // Legacy endpoint remains as a fallback.
+            if (root == null) {
+                String username = statusIndex > 0 ? parts.get(statusIndex - 1) : "";
+                if (!username.isEmpty()) {
+                    try {
+                        root = fetchJson(
+                                "https://api.fxtwitter.com/"
+                                        + username
+                                        + "/status/"
+                                        + id
+                        );
+                    } catch (Exception ignored) { }
+                }
+            }
+
+            if (root == null) return out;
 
             JSONObject status = root.optJSONObject("status");
             if (status == null) status = root.optJSONObject("tweet");
             if (status == null) return out;
 
             String media = firstMediaUrl(status);
+
             if (media.isEmpty()) {
                 JSONObject quote = status.optJSONObject("quote");
                 if (quote != null) media = firstMediaUrl(quote);
@@ -69,20 +86,26 @@ final class XTwitterResolver {
         JSONObject media = status.optJSONObject("media");
         if (media == null) return "";
 
-        JSONArray all = media.optJSONArray("all");
-        if (all != null && all.length() > 0) {
-            for (int i = 0; i < all.length(); i++) {
-                JSONObject item = all.optJSONObject(i);
-                String url = mediaItemUrl(item);
-                if (!url.isEmpty()) return url;
-            }
-        }
-
+        // Prefer actual videos first so a thumbnail/photo never wins over the attached video.
         JSONArray videos = media.optJSONArray("videos");
         if (videos != null) {
             for (int i = 0; i < videos.length(); i++) {
                 String url = mediaItemUrl(videos.optJSONObject(i));
                 if (!url.isEmpty()) return url;
+            }
+        }
+
+        JSONArray all = media.optJSONArray("all");
+        if (all != null) {
+            for (int i = 0; i < all.length(); i++) {
+                JSONObject item = all.optJSONObject(i);
+                if (item == null) continue;
+
+                String type = item.optString("type", "").toLowerCase(Locale.US);
+                if ("video".equals(type) || "gif".equals(type)) {
+                    String url = mediaItemUrl(item);
+                    if (!url.isEmpty()) return url;
+                }
             }
         }
 
@@ -94,6 +117,33 @@ final class XTwitterResolver {
                 String url = photo.optString("url", "");
                 if (isHttp(url)) return url;
             }
+        }
+
+        if (all != null) {
+            for (int i = 0; i < all.length(); i++) {
+                String url = mediaItemUrl(all.optJSONObject(i));
+                if (!url.isEmpty()) return url;
+            }
+        }
+
+        JSONObject external = media.optJSONObject("external");
+        if (external != null) {
+            String url = external.optString("url", "");
+            if (isHttp(url)) return url;
+        }
+
+        JSONObject mosaic = media.optJSONObject("mosaic");
+        if (mosaic != null) {
+            JSONObject formats = mosaic.optJSONObject("formats");
+            if (formats != null) {
+                String jpeg = formats.optString("jpeg", "");
+                if (isHttp(jpeg)) return jpeg;
+                String webp = formats.optString("webp", "");
+                if (isHttp(webp)) return webp;
+            }
+
+            String url = mosaic.optString("url", "");
+            if (isHttp(url)) return url;
         }
 
         return "";
@@ -108,6 +158,7 @@ final class XTwitterResolver {
             JSONArray formats = item.optJSONArray("formats");
 
             long bestBitrate = Long.MIN_VALUE;
+            long bestSize = Long.MIN_VALUE;
             String bestUrl = "";
 
             if (formats != null) {
@@ -117,15 +168,20 @@ final class XTwitterResolver {
 
                     String container = format.optString("container", "").toLowerCase(Locale.US);
                     String url = format.optString("url", "");
-
                     if (!isHttp(url)) continue;
-                    if (!"mp4".equals(container) && !url.toLowerCase(Locale.US).contains(".mp4")) {
-                        continue;
-                    }
+
+                    boolean mp4 = "mp4".equals(container)
+                            || url.toLowerCase(Locale.US).contains(".mp4");
+
+                    if (!mp4) continue;
 
                     long bitrate = format.optLong("bitrate", 0);
-                    if (bitrate >= bestBitrate) {
+                    long size = format.optLong("size", 0);
+
+                    if (bitrate > bestBitrate
+                            || (bitrate == bestBitrate && size > bestSize)) {
                         bestBitrate = bitrate;
+                        bestSize = size;
                         bestUrl = url;
                     }
                 }
@@ -133,18 +189,27 @@ final class XTwitterResolver {
 
             if (!bestUrl.isEmpty()) return bestUrl;
 
-            String url = item.optString("url", "");
-            if (isHttp(url)) return url;
+            String direct = item.optString("url", "");
+            if (isHttp(direct) && direct.toLowerCase(Locale.US).contains(".mp4")) {
+                return direct;
+            }
 
             String transcode = item.optString("transcode_url", "");
-            if (isHttp(transcode)) return transcode;
+            if (isHttp(transcode) && transcode.toLowerCase(Locale.US).contains(".mp4")) {
+                return transcode;
+            }
 
             return "";
         }
 
-        if ("photo".equals(type) || "image".equals(type)) {
-            String url = item.optString("url", "");
-            return isHttp(url) ? url : "";
+        if ("mosaic_photo".equals(type)) {
+            JSONObject formats = item.optJSONObject("formats");
+            if (formats != null) {
+                String jpeg = formats.optString("jpeg", "");
+                if (isHttp(jpeg)) return jpeg;
+                String webp = formats.optString("webp", "");
+                if (isHttp(webp)) return webp;
+            }
         }
 
         String url = item.optString("url", "");
@@ -165,6 +230,7 @@ final class XTwitterResolver {
         connection.setRequestProperty("User-Agent", USER_AGENT);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Cache-Control", "no-cache");
+        connection.setRequestProperty("Pragma", "no-cache");
 
         int code = connection.getResponseCode();
         if (code < 200 || code >= 300) {
@@ -189,6 +255,14 @@ final class XTwitterResolver {
             connection.disconnect();
         }
 
-        return new JSONObject(body);
+        JSONObject json = new JSONObject(body);
+
+        // FxTwitter mirrors status in the body. Fail fast on tombstones/errors.
+        int code = json.optInt("code", 200);
+        if (code < 200 || code >= 300) {
+            throw new IllegalStateException("API " + code);
+        }
+
+        return json;
     }
 }
